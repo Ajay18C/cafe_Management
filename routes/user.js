@@ -5,6 +5,9 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const nodemailer = require('nodemailer');
 
+var auth = require('../services/authentication');
+var checkRole = require('../services/checkRole');
+
 router.post('/signup',(req,res)=>{
     let user = req.body;
     query = "select email,password,status,role from user where email=?"
@@ -91,7 +94,7 @@ router.post('/forgotPassword',(req,res)=>{
     })
 })
 
-router.get('/getUser',(req,res)=>{
+router.get('/getUser',auth.authenticateToken,checkRole.checkRole,(req,res)=>{
     query = 'select * from user where role = "user"'
     connection.query(query,(err,results)=>{
         if(!err){
@@ -103,10 +106,12 @@ router.get('/getUser',(req,res)=>{
     })
 })
 
-router.patch('/updateStatus',(req,res)=>{
+router.patch('/updateStatus',auth.authenticateToken,checkRole.checkRole,(req,res)=>{
+    console.log("into updateStatus")
     let user = req.body
     query = "update user set status=? where id =?";
-    connection.query(query,[user.status],[user.id],(err,results)=>{
+    connection.query(query,[user.status,user.id],(err,results)=>{
+        console.log(user)
         if(!err){
             if(results.affectedRows == 0){
                 return res.status(404).json({"message":"user id does not exists"});
@@ -120,12 +125,39 @@ router.patch('/updateStatus',(req,res)=>{
     })
 })
 
-router.get('/checkToken',(req,res)=>{
+router.get('/checkToken',auth.authenticateToken,(req,res)=>{
     res.status(200).json({"message":"true"});
 })
 
-router.post('/changePassword',(req,res)=>{
-    let user = req.body
+router.post('/changePassword',auth.authenticateToken,(req,res)=>{
+    let user = req.body;
+    const email = res.locals.email;
+    var query = "select * from user where email=? and password=?";
+    console.log(email)
+    connection.query(query,[email,user.oldPassword],(err,results)=>{
+        if(!err){
+            if(results<=0){
+                return res.status(400).json({"message":"Incorrect old password"});
+            }
+            else if(results[0].password == user.oldPassword){
+                query = "update user set password=? where email=?";
+                connection.query(query,[user.newPassword,email],(err,results)=>{
+                    if(!err){
+                        return res.status(200).json({"message":"Password Changed Successfully."})
+                    }
+                    else{
+                        return res.status(500).json(err)
+                    }
+                })
+            }
+            else{
+                return res.status(400).json({"message":"Something went wrong Please try again later"})
+            }
+        }
+        else{
+            return res.status(500).json(err);
+        }
+    })
 })
 
 module.exports = router
